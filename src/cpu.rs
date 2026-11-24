@@ -23,7 +23,7 @@ impl CpuBenchmark {
         let start = Instant::now();
         let mut sum: u64 = 0;
         for i in 0..ITERATIONS {
-            sum = sum.wrapping_add(i).wrapping_mul(31).wrapping_xor(0x9e3779b97f4a7c15);
+            sum = sum.wrapping_add(i).wrapping_mul(31) ^ 0x9e3779b97f4a7c15;
         }
         let duration = start.elapsed().as_secs_f64() * 1000.0;
         let score = (ITERATIONS as f64 / duration) / 1_000_000.0;
@@ -40,10 +40,10 @@ impl CpuBenchmark {
     fn floating_point(&self) -> BenchmarkResult {
         const ITERATIONS: u64 = 50_000_000;
         let start = Instant::now();
-        let mut sum: f64 = 0.0;
+        let mut _sum: f64 = 0.0;
         for i in 0..ITERATIONS {
             let x = i as f64 * 0.000001;
-            sum += x.sin().cos().tan().sqrt().max(0.0);
+            _sum += x.sin().cos().tan().sqrt().max(0.0);
         }
         let duration = start.elapsed().as_secs_f64() * 1000.0;
         let score = (ITERATIONS as f64 / duration) / 1_000_000.0;

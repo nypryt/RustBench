@@ -1,31 +1,51 @@
 use std::rc::Rc;
 use glow::{Context, HasContext};
+use winit::event_loop::EventLoop;
 use winit::window::Window;
-use raw_window_handle::{HasWindowHandle, HasDisplayHandle};
-use crate::{BenchmarkResult, GpuBackend};
+use crate::gpu::GpuBackend;
+use crate::BenchmarkResult;
 
 pub struct OpenGlBenchmark {
     gl: Rc<Context>,
     device_name: String,
+    _event_loop: EventLoop<()>,
+    _window: Window,
 }
 
 impl OpenGlBenchmark {
     pub fn new() -> Result<Self, String> {
-        let event_loop = winit::event_loop::EventLoop::new().map_err(|e| e.to_string())?;
-        let window = winit::window::WindowBuilder::new()
+        let event_loop = EventLoop::new().map_err(|e| e.to_string())?;
+        let window = event_loop.create_window(Window::default_attributes()
             .with_title("RustBench OpenGL")
-            .with_visible(false)
-            .build(&event_loop)
+            .with_visible(false))
             .map_err(|e| e.to_string())?;
 
-        let window_handle = window.window_handle().map_err(|e| e.to_string())?.as_raw();
-        let display_handle = window.display_handle().map_err(|e| e.to_string())?.as_raw();
-
         let gl = unsafe {
-            glow::Context::from_loader_function_cstr(|s| {
-                let s = std::ffi::CString::new(s.as_bytes()).unwrap();
-                winit::platform::windows::WindowExtWindows::get_proc_address(&window, s.as_ptr()) as *const _
-            })
+            #[cfg(target_os = "windows")]
+            {
+                use std::ffi::c_void;
+                glow::Context::from_loader_function(|s| {
+                    let name = std::ffi::CString::new(s).unwrap();
+                    wglGetProcAddress(name.as_ptr()) as *const c_void
+                })
+            }
+            #[cfg(target_os = "linux")]
+            {
+                use std::ffi::c_void;
+                glow::Context::from_loader_function(|s| {
+                    let name = std::ffi::CString::new(s).unwrap();
+                    glXGetProcAddress(name.as_ptr()) as *const c_void
+                })
+            }
+            #[cfg(target_os = "macos")]
+            {
+                use std::ffi::c_void;
+                glow::Context::from_loader_function(|s| {
+                    let name = std::ffi::CString::new(s).unwrap();
+                    // On macOS, we'd use CGLGetFunctionPointer or similar
+                    std::ptr::null()
+                })
+            }
         };
 
         let device_name = Self::get_device_name(&gl);
@@ -33,6 +53,8 @@ impl OpenGlBenchmark {
         Ok(Self {
             gl: Rc::new(gl),
             device_name,
+            _event_loop: event_loop,
+            _window: window,
         })
     }
 
@@ -40,7 +62,7 @@ impl OpenGlBenchmark {
         unsafe {
             let renderer = gl.get_parameter_string(glow::RENDERER);
             let vendor = gl.get_parameter_string(glow::VENDOR);
-            format!("{} {}", vendor.unwrap_or_default(), renderer.unwrap_or_default())
+            format!("{} {}", vendor, renderer)
         }
     }
 
@@ -76,6 +98,15 @@ impl OpenGlBenchmark {
             self.gl.finish();
             start.elapsed().as_secs_f64() * 1000.0
         }
+    }
+
+    pub fn run_all(&self) -> Vec<BenchmarkResult> {
+        let mut results = Vec::new();
+        results.push(self.run_compute_test("Compute Shader (Simple)", 1_000_000));
+        results.push(self.run_compute_test("Compute Shader (Complex)", 100_000));
+        results.push(self.run_compute_test("Matrix Multiply", 10_000));
+        results.push(self.run_compute_test("Particle Simulation", 500_000));
+        results
     }
 }
 
@@ -121,6 +152,16 @@ impl GpuBackend for OpenGlBenchmark {
             iterations,
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+extern "system" {
+    fn wglGetProcAddress(lpszProc: *const i8) -> *const std::ffi::c_void;
+}
+
+#[cfg(target_os = "linux")]
+extern "C" {
+    fn glXGetProcAddress(proc_name: *const u8) -> *const std::ffi::c_void;
 }
 
 const SIMPLE_COMPUTE: &str = r#"

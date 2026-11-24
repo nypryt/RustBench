@@ -1,16 +1,11 @@
-use std::time::{Duration, Instant};
-use std::sync::Arc;
-use rayon::prelude::*;
-
 mod cpu;
 mod gpu;
 mod opengl_backend;
 mod vulkan_backend;
-#[cfg(all(target_os = "macos", feature = "metal"))]
+#[cfg(all(target_os = "macos", feature = "metal_backend"))]
 mod metal_backend;
 
 use cpu::CpuBenchmark;
-use gpu::{GpuBackend, GpuBenchmark};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BenchmarkResult {
@@ -33,23 +28,23 @@ fn main() {
     let cpu_bench = CpuBenchmark::new();
     results.extend(cpu_bench.run_all());
 
-    // GPU Benchmarks
+    // GPU Benchmarks (commented out for now - need proper SPIR-V shaders)
     log::info!("Running GPU benchmarks...");
-    #[cfg(feature = "opengl")]
-    {
-        if let Ok(bench) = opengl_backend::OpenGlBenchmark::new() {
-            results.extend(bench.run_all());
-        }
-    }
+    // #[cfg(feature = "opengl")]
+    // {
+    //     if let Ok(bench) = opengl_backend::OpenGlBenchmark::new() {
+    //         results.extend(bench.run_all());
+    //     }
+    // }
+    // #[cfg(feature = "vulkan")]
+    // {
+    //     match vulkan_backend::VulkanBenchmark::new() {
+    //         Ok(bench) => results.extend(bench.run_all()),
+    //         Err(e) => log::warn!("Vulkan backend failed to initialize: {}", e),
+    //     }
+    // }
 
-    #[cfg(feature = "vulkan")]
-    {
-        if let Ok(bench) = vulkan_backend::VulkanBenchmark::new() {
-            results.extend(bench.run_all());
-        }
-    }
-
-    #[cfg(all(target_os = "macos", feature = "metal"))]
+    #[cfg(all(target_os = "macos", feature = "metal_backend"))]
     {
         if let Ok(bench) = metal_backend::MetalBenchmark::new() {
             results.extend(bench.run_all());

@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use ash::{vk, Entry, Instance, Device};
+use winit::event_loop::EventLoop;
 use winit::window::Window;
-use raw_window_handle::{HasWindowHandle, HasDisplayHandle};
-use crate::{BenchmarkResult, GpuBackend};
+use crate::gpu::GpuBackend;
+use crate::BenchmarkResult;
 
 pub struct VulkanBenchmark {
     entry: Entry,
@@ -12,20 +12,21 @@ pub struct VulkanBenchmark {
     queue: vk::Queue,
     queue_family_index: u32,
     device_name: String,
+    _event_loop: EventLoop<()>,
+    _window: Window,
 }
 
 impl VulkanBenchmark {
     pub fn new() -> Result<Self, String> {
         let entry = unsafe { Entry::load().map_err(|e| e.to_string())? };
 
-        let event_loop = winit::event_loop::EventLoop::new().map_err(|e| e.to_string())?;
-        let window = winit::window::WindowBuilder::new()
+        let event_loop = EventLoop::new().map_err(|e| e.to_string())?;
+        let window = event_loop.create_window(Window::default_attributes()
             .with_title("RustBench Vulkan")
-            .with_visible(false)
-            .build(&event_loop)
+            .with_visible(false))
             .map_err(|e| e.to_string())?;
 
-        let instance = Self::create_instance(&entry, &window)?;
+        let instance = Self::create_instance(&entry)?;
         let physical_device = Self::pick_physical_device(&instance)?;
         let (device, queue, queue_family_index) = Self::create_logical_device(&instance, physical_device)?;
         let device_name = Self::get_device_name(&instance, physical_device);
@@ -38,25 +39,47 @@ impl VulkanBenchmark {
             queue,
             queue_family_index,
             device_name,
+            _event_loop: event_loop,
+            _window: window,
         })
     }
 
-    fn create_instance(entry: &Entry, window: &Window) -> Result<Instance, String> {
-        let app_info = vk::ApplicationInfo::default()
-            .application_name(c"RustBench")
-            .application_version(vk::make_api_version(0, 0, 1, 0))
-            .engine_name(c"RustBench")
-            .engine_version(vk::make_api_version(0, 0, 1, 0))
-            .api_version(vk::API_VERSION_1_3);
+    fn create_instance(entry: &Entry) -> Result<Instance, String> {
+        let app_info = vk::ApplicationInfo {
+            p_application_name: c"RustBench".as_ptr(),
+            application_version: vk::make_api_version(0, 0, 1, 0),
+            p_engine_name: c"RustBench".as_ptr(),
+            engine_version: vk::make_api_version(0, 0, 1, 0),
+            api_version: vk::API_VERSION_1_3,
+            ..Default::default()
+        };
 
-        let mut extensions = ash_window::enumerate_required_extensions(window.display_handle().unwrap().as_raw())
-            .map_err(|e| e.to_string())?
-            .to_vec();
-        extensions.push(ash::ext::debug_utils::NAME.as_ptr());
+        let mut extensions = Vec::new();
+        
+        #[cfg(target_os = "windows")]
+        {
+            extensions.push(c"VK_KHR_surface".as_ptr());
+            extensions.push(c"VK_KHR_win32_surface".as_ptr());
+        }
+        #[cfg(target_os = "linux")]
+        {
+            extensions.push(c"VK_KHR_surface".as_ptr());
+            extensions.push(c"VK_KHR_xcb_surface".as_ptr());
+            extensions.push(c"VK_KHR_xlib_surface".as_ptr());
+        }
+        #[cfg(target_os = "macos")]
+        {
+            extensions.push(c"VK_KHR_surface".as_ptr());
+            extensions.push(c"VK_EXT_metal_surface".as_ptr());
+        }
+        extensions.push(c"VK_EXT_debug_utils".as_ptr());
 
-        let create_info = vk::InstanceCreateInfo::default()
-            .application_info(&app_info)
-            .enabled_extension_names(&extensions);
+        let create_info = vk::InstanceCreateInfo {
+            p_application_info: &app_info,
+            enabled_extension_count: extensions.len() as u32,
+            pp_enabled_extension_names: extensions.as_ptr(),
+            ..Default::default()
+        };
 
         unsafe { entry.create_instance(&create_info, None).map_err(|e| e.to_string()) }
     }
@@ -78,16 +101,24 @@ impl VulkanBenchmark {
             .ok_or("No compute queue family")? as u32;
 
         let queue_priorities = [1.0f32];
-        let queue_create_info = vk::DeviceQueueCreateInfo::default()
-            .queue_family_index(queue_family_index)
-            .queue_priorities(&queue_priorities);
+        let queue_create_info = vk::DeviceQueueCreateInfo {
+            queue_family_index,
+            queue_count: 1,
+            p_queue_priorities: queue_priorities.as_ptr(),
+            ..Default::default()
+        };
 
-        let features = vk::PhysicalDeviceFeatures::default()
-            .shader_storage_buffer_array_dynamic_indexing(true);
+        let features = vk::PhysicalDeviceFeatures {
+            shader_storage_buffer_array_dynamic_indexing: vk::TRUE,
+            ..Default::default()
+        };
 
-        let device_create_info = vk::DeviceCreateInfo::default()
-            .queue_create_infos(std::slice::from_ref(&queue_create_info))
-            .enabled_features(&features);
+        let device_create_info = vk::DeviceCreateInfo {
+            queue_create_info_count: 1,
+            p_queue_create_infos: &queue_create_info,
+            p_enabled_features: &features,
+            ..Default::default()
+        };
 
         let device = unsafe { instance.create_device(physical_device, &device_create_info, None).map_err(|e| e.to_string())? };
         let queue = unsafe { device.get_device_queue(queue_family_index, 0) };
@@ -104,7 +135,11 @@ impl VulkanBenchmark {
 
     fn create_compute_pipeline(&self, shader_spirv: &[u32]) -> Result<(vk::Pipeline, vk::PipelineLayout), String> {
         let shader_module = unsafe {
-            let create_info = vk::ShaderModuleCreateInfo::default().code(shader_spirv);
+            let create_info = vk::ShaderModuleCreateInfo {
+                code_size: shader_spirv.len() * 4,
+                p_code: shader_spirv.as_ptr(),
+                ..Default::default()
+            };
             self.device.create_shader_module(&create_info, None).map_err(|e| e.to_string())?
         };
 
@@ -113,15 +148,19 @@ impl VulkanBenchmark {
             self.device.create_pipeline_layout(&create_info, None).map_err(|e| e.to_string())?
         };
 
-        let stage = vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlags::COMPUTE)
-            .module(shader_module)
-            .name(c"main");
+        let stage = vk::PipelineShaderStageCreateInfo {
+            stage: vk::ShaderStageFlags::COMPUTE,
+            module: shader_module,
+            p_name: c"main".as_ptr(),
+            ..Default::default()
+        };
 
         let pipeline = unsafe {
-            let create_info = vk::ComputePipelineCreateInfo::default()
-                .stage(stage)
-                .layout(layout);
+            let create_info = vk::ComputePipelineCreateInfo {
+                stage,
+                layout,
+                ..Default::default()
+            };
             self.device.create_compute_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&create_info), None)
                 .map_err(|e| e.1.to_string())?[0]
         };
@@ -130,19 +169,23 @@ impl VulkanBenchmark {
         Ok((pipeline, layout))
     }
 
-    fn run_compute(&self, pipeline: vk::Pipeline, layout: vk::PipelineLayout, work_groups: [u32; 3]) -> f64 {
+    fn run_compute(&self, pipeline: vk::Pipeline, _layout: vk::PipelineLayout, work_groups: [u32; 3]) -> f64 {
         let cmd_pool = unsafe {
-            let create_info = vk::CommandPoolCreateInfo::default()
-                .queue_family_index(self.queue_family_index)
-                .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+            let create_info = vk::CommandPoolCreateInfo {
+                queue_family_index: self.queue_family_index,
+                flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
+                ..Default::default()
+            };
             self.device.create_command_pool(&create_info, None).unwrap()
         };
 
         let cmd_buffer = unsafe {
-            let alloc_info = vk::CommandBufferAllocateInfo::default()
-                .command_pool(cmd_pool)
-                .level(vk::CommandBufferLevel::PRIMARY)
-                .command_buffer_count(1);
+            let alloc_info = vk::CommandBufferAllocateInfo {
+                command_pool: cmd_pool,
+                level: vk::CommandBufferLevel::PRIMARY,
+                command_buffer_count: 1,
+                ..Default::default()
+            };
             self.device.allocate_command_buffers(&alloc_info).unwrap()[0]
         };
 
@@ -152,7 +195,11 @@ impl VulkanBenchmark {
             self.device.cmd_dispatch(cmd_buffer, work_groups[0], work_groups[1], work_groups[2]);
             self.device.end_command_buffer(cmd_buffer).unwrap();
 
-            let submit_info = vk::SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd_buffer));
+            let submit_info = vk::SubmitInfo {
+                command_buffer_count: 1,
+                p_command_buffers: &cmd_buffer,
+                ..Default::default()
+            };
             let fence = self.device.create_fence(&vk::FenceCreateInfo::default(), None).unwrap();
 
             let start = std::time::Instant::now();
@@ -165,6 +212,15 @@ impl VulkanBenchmark {
             self.device.destroy_command_pool(cmd_pool, None);
             duration
         }
+    }
+
+    pub fn run_all(&self) -> Vec<BenchmarkResult> {
+        let mut results = Vec::new();
+        results.push(self.run_compute_test("Compute Shader (Simple)", 1_000_000));
+        results.push(self.run_compute_test("Compute Shader (Complex)", 100_000));
+        results.push(self.run_compute_test("Matrix Multiply", 10_000));
+        results.push(self.run_compute_test("Particle Simulation", 500_000));
+        results
     }
 }
 
@@ -222,7 +278,7 @@ impl Drop for VulkanBenchmark {
     }
 }
 
-// Pre-compiled SPIR-V shaders (minimal examples - in practice use shaderc to compile at build time)
+// Minimal SPIR-V shaders (just valid headers - real shaders would be compiled with shaderc)
 const SIMPLE_COMPUTE_SPIRV: &[u32] = &[
     0x07230203, 0x00010000, 0x000a0004, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000001,
     0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
