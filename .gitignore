@@ -1,4 +1,5 @@
 /target
+/BUILDS
 **/*.rs.bk
 Cargo.lock
 *.json

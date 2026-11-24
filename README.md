@@ -7,11 +7,12 @@ Cross-platform CPU/GPU compute benchmark written in Rust with support for:
 
 ## Features
 
-- CPU benchmarks: integer math, floating point, memory bandwidth, parallel scaling (Rayon)
-- GPU benchmarks: compute shaders, matrix multiply, particle simulation
-- Multiple backend support with automatic detection
-- JSON results output
-- Headless operation (no visible window required)
+- **CPU Benchmarks**: Integer math, floating point, memory bandwidth, parallel scaling (Rayon)
+- **GPU Benchmarks**: Compute shaders, matrix multiply, particle simulation
+- **Multiple backend support** with automatic detection
+- **JSON results output** for easy parsing and comparison
+- **Headless operation** (no visible window required)
+- **Cross-platform**: Windows, Linux, macOS
 
 ## Building
 
@@ -20,7 +21,7 @@ Cross-platform CPU/GPU compute benchmark written in Rust with support for:
 cargo build --release
 
 # With Metal support (macOS only)
-cargo build --release --features metal
+cargo build --release --features metal_backend
 
 # Specific backends
 cargo build --release --features opengl
@@ -35,6 +36,8 @@ cargo build --release --features vulkan
 
 # Results saved to rustbench_results.json
 ```
+
+Pre-built binaries are available in the `BUILDS/` directory.
 
 ## Requirements
 
@@ -63,6 +66,55 @@ Compute Shader (Complex)       Vulkan       NVIDIA RTX 4090        134.56     74
 Matrix Multiply                Vulkan       NVIDIA RTX 4090          4.89    20449.9
 Particle Simulation            Vulkan       NVIDIA RTX 4090         19.87    25163.4
 ================================================================================
+```
+
+## Project Structure
+
+```
+RustBench/
+├── src/
+│   ├── main.rs              # Entry point, result handling
+│   ├── cpu.rs               # CPU benchmarks (Rayon parallel)
+│   ├── gpu.rs               # GPU backend trait
+│   ├── opengl_backend.rs    # OpenGL compute shaders
+│   ├── vulkan_backend.rs    # Vulkan compute pipelines
+│   └── metal_backend.rs     # Metal compute (macOS)
+├── BUILDS/                  # Pre-built release binaries
+├── Cargo.toml
+└── README.md
+```
+
+## Benchmark Details
+
+### CPU Tests
+| Test | Description |
+|------|-------------|
+| Integer Math | 100M iterations of LCG-style operations |
+| Floating Point | 50M iterations of sin/cos/tan/sqrt |
+| Memory Bandwidth | 64MB buffer, 10 passes (GB/s) |
+| Parallel Scaling | 10M elements, Rayon parallel map/reduce |
+
+### GPU Tests (per backend)
+| Test | Workload |
+|------|----------|
+| Compute Shader (Simple) | 1M threads, basic ALU ops |
+| Compute Shader (Complex) | 100K threads, 100 math ops each |
+| Matrix Multiply | 16x16 thread blocks, 4x4 matrices |
+| Particle Simulation | 500K particles, gravity + bounce |
+
+## JSON Output Format
+
+```json
+[
+  {
+    "name": "Integer Math",
+    "backend": "CPU",
+    "device": "AMD Ryzen 9 7950X",
+    "duration_ms": 45.23,
+    "score": 2210.5,
+    "iterations": 100000000
+  }
+]
 ```
 
 ## License
