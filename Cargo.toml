@@ -1,0 +1,48 @@
+[package]
+name = "rustbench"
+version = "0.1.0"
+edition = "2021"
+description = "Cross-platform CPU/GPU compute benchmark (OpenGL, Vulkan, Metal)"
+license = "MIT"
+repository = "https://github.com/nypryt/RustBench"
+
+[dependencies]
+# Cross-platform windowing
+winit = { version = "0.30", features = ["serde"] }
+raw-window-handle = "0.6"
+
+# CPU benchmarking
+rayon = "1.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# OpenGL
+glow = "0.14"
+
+# Vulkan
+ash = "0.37"
+vk-sys = "0.7"
+
+# Metal (macOS only)
+metal = { version = "0.28", target = "x86_64-apple-darwin", optional = true }
+metal = { version = "0.28", target = "aarch64-apple-darwin", optional = true }
+objc2 = { version = "0.6", target = "x86_64-apple-darwin", optional = true }
+objc2 = { version = "0.6", target = "aarch64-apple-darwin", optional = true }
+objc2-foundation = { version = "0.6", target = "x86_64-apple-darwin", optional = true }
+objc2-foundation = { version = "0.6", target = "aarch64-apple-darwin", optional = true }
+
+# Logging
+env_logger = "0.11"
+log = "0.4"
+
+[features]
+default = ["opengl", "vulkan"]
+opengl = ["glow"]
+vulkan = ["ash", "vk-sys"]
+metal = ["metal", "objc2", "objc2-foundation"]
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1
+strip = true
