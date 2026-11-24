@@ -68,6 +68,49 @@ Particle Simulation            Vulkan       NVIDIA RTX 4090         19.87    251
 ================================================================================
 ```
 
+## Development Workflow
+
+Optimize the development and verification workflow:
+
+- **Reuse Cargo build artifacts** and incremental compilation
+- **Avoid unnecessary full rebuilds** - use `cargo build` not `cargo clean && cargo build`
+- **Never run `cargo clean`** unless explicitly justified
+- **Use `cargo check`** for quick compilation verification
+- **Run targeted tests** when possible
+- **Avoid release builds** during routine development - use `cargo build` (debug) for iteration
+- **Test individual GPU backends independently** when supported by the project configuration:
+  - `cargo build --features opengl`
+  - `cargo build --features vulkan`
+  - `cargo build --features metal_backend` (macOS only)
+- **Run comprehensive tests and release builds** at appropriate milestones:
+  - `cargo test` for unit tests
+  - `cargo build --release` for performance validation
+  - `cargo bench` if criterion benches exist
+
+Do not sacrifice test coverage or correctness just to reduce compilation time.
+
+## Cross-Compilation
+
+```bash
+# Install targets
+rustup target add x86_64-pc-windows-msvc aarch64-pc-windows-msvc
+rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
+rustup target add x86_64-apple-darwin aarch64-apple-darwin
+
+# Windows targets (native)
+cargo build --release --target x86_64-pc-windows-msvc
+cargo build --release --target aarch64-pc-windows-msvc
+
+# Linux targets (via cross)
+cargo install cross
+cross build --release --target x86_64-unknown-linux-gnu
+cross build --release --target aarch64-unknown-linux-gnu
+
+# macOS targets - requires macOS host or CI
+# cargo build --release --target x86_64-apple-darwin
+# cargo build --release --target aarch64-apple-darwin
+```
+
 ## Project Structure
 
 ```
@@ -81,6 +124,8 @@ RustBench/
 │   └── metal_backend.rs     # Metal compute (macOS)
 ├── BUILDS/                  # Pre-built release binaries
 ├── Cargo.toml
+├── LICENSE.md               # Apache-2.0
+├── NOTICE.md                # Third-party notices
 └── README.md
 ```
 
@@ -119,4 +164,8 @@ RustBench/
 
 ## License
 
-MIT
+Apache-2.0 - see [LICENSE.md](LICENSE.md) for details.
+
+## Third-Party Notices
+
+See [NOTICE.md](NOTICE.md) for third-party dependency licenses.
